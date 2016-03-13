@@ -5,7 +5,7 @@ test_description='git grep in binary files'
 . ./test-lib.sh
 
 test_expect_success 'setup' "
-	printf 'binary\000file\n' >a &&
+	echo 'binaryQfile' | q_to_nul >a &&
 	git add a &&
 	git commit -m.
 "
@@ -61,7 +61,7 @@ test_expect_success 'git grep -Fi iLE a' '
 
 # This test actually passes on platforms where regexec() supports the
 # flag REG_STARTEND.
-test_expect_failure 'git grep ile a' '
+test_expect_success 'git grep ile a' '
 	git grep ile a
 '
 
@@ -70,33 +70,111 @@ test_expect_failure 'git grep .fi a' '
 '
 
 test_expect_success 'git grep -F y<NUL>f a' "
-	printf 'y\000f' >f &&
+	printf 'yQf' | q_to_nul >f &&
 	git grep -f f -F a
 "
 
 test_expect_success 'git grep -F y<NUL>x a' "
-	printf 'y\000x' >f &&
+	printf 'yQx' | q_to_nul >f &&
 	test_must_fail git grep -f f -F a
 "
 
 test_expect_success 'git grep -Fi Y<NUL>f a' "
-	printf 'Y\000f' >f &&
+	printf 'YQf' | q_to_nul >f &&
 	git grep -f f -Fi a
 "
 
-test_expect_failure 'git grep -Fi Y<NUL>x a' "
-	printf 'Y\000x' >f &&
+test_expect_success 'git grep -Fi Y<NUL>x a' "
+	printf 'YQx' | q_to_nul >f &&
 	test_must_fail git grep -f f -Fi a
 "
 
 test_expect_success 'git grep y<NUL>f a' "
-	printf 'y\000f' >f &&
+	printf 'yQf' | q_to_nul >f &&
 	git grep -f f a
 "
 
-test_expect_failure 'git grep y<NUL>x a' "
-	printf 'y\000x' >f &&
+test_expect_success 'git grep y<NUL>x a' "
+	printf 'yQx' | q_to_nul >f &&
 	test_must_fail git grep -f f a
 "
+
+test_expect_success 'grep respects binary diff attribute' '
+	echo text >t &&
+	git add t &&
+	echo t:text >expect &&
+	git grep text t >actual &&
+	test_cmp expect actual &&
+	echo "t -diff" >.gitattributes &&
+	echo "Binary file t matches" >expect &&
+	git grep text t >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'grep --cached respects binary diff attribute' '
+	git grep --cached text t >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'grep --cached respects binary diff attribute (2)' '
+	git add .gitattributes &&
+	rm .gitattributes &&
+	git grep --cached text t >actual &&
+	test_when_finished "git rm --cached .gitattributes" &&
+	test_when_finished "git checkout .gitattributes" &&
+	test_cmp expect actual
+'
+
+test_expect_success 'grep revision respects binary diff attribute' '
+	git commit -m new &&
+	echo "Binary file HEAD:t matches" >expect &&
+	git grep text HEAD -- t >actual &&
+	test_when_finished "git reset HEAD^" &&
+	test_cmp expect actual
+'
+
+test_expect_success 'grep respects not-binary diff attribute' '
+	echo binQary | q_to_nul >b &&
+	git add b &&
+	echo "Binary file b matches" >expect &&
+	git grep bin b >actual &&
+	test_cmp expect actual &&
+	echo "b diff" >.gitattributes &&
+	echo "b:binQary" >expect &&
+	git grep bin b >actual.raw &&
+	nul_to_q <actual.raw >actual &&
+	test_cmp expect actual
+'
+
+cat >nul_to_q_textconv <<'EOF'
+#!/bin/sh
+"$PERL_PATH" -pe 'y/\000/Q/' < "$1"
+EOF
+chmod +x nul_to_q_textconv
+
+test_expect_success 'setup textconv filters' '
+	echo a diff=foo >.gitattributes &&
+	git config diff.foo.textconv "\"$(pwd)\""/nul_to_q_textconv
+'
+
+test_expect_success 'grep does not honor textconv' '
+	test_must_fail git grep Qfile
+'
+
+test_expect_success 'grep --textconv honors textconv' '
+	echo "a:binaryQfile" >expect &&
+	git grep --textconv Qfile >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'grep --no-textconv does not honor textconv' '
+	test_must_fail git grep --no-textconv Qfile
+'
+
+test_expect_success 'grep --textconv blob honors textconv' '
+	echo "HEAD:a:binaryQfile" >expect &&
+	git grep --textconv Qfile HEAD:a >actual &&
+	test_cmp expect actual
+'
 
 test_done

@@ -1,11 +1,8 @@
-#!/bin/sh
+# Shell library sourced instead of ./test-lib.sh by cvsimport tests.
 
 . ./test-lib.sh
 
 unset CVS_SERVER
-# for clean cvsps cache
-HOME=$(pwd)
-export HOME
 
 if ! type cvs >/dev/null 2>&1
 then
@@ -16,7 +13,7 @@ fi
 CVS="cvs -f"
 export CVS
 
-cvsps_version=`cvsps -h 2>&1 | sed -ne 's/cvsps version //p'`
+cvsps_version=$(cvsps -h 2>&1 | sed -ne 's/cvsps version //p')
 case "$cvsps_version" in
 2.1 | 2.2*)
 	;;
@@ -29,6 +26,12 @@ case "$cvsps_version" in
 	test_done
 	;;
 esac
+
+setup_cvs_test_repository () {
+	CVSROOT="$(pwd)/.cvsroot" &&
+	cp -r "$TEST_DIRECTORY/$1/cvsroot" "$CVSROOT" &&
+	export CVSROOT
+}
 
 test_cvs_co () {
 	# Usage: test_cvs_co BRANCH_NAME
